@@ -5,20 +5,42 @@
  * And http://www.ipol.im/pub/art/2011/g_mhcd/
  *
  * Copyright 2015 Jason Newton <nevion@gmail.com>
- */
-
+ *
+ *Permission is hereby granted, free of charge, to any person obtaining a copy
+ *of this software and associated documentation files (the "Software"), to deal
+ *in the Software without restriction, including without limitation the rights
+ *to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *copies of the Software, and to permit persons to whom the Software is
+ *furnished to do so, subject to the following conditions:
+ *
+ *The above copyright notice and this permission notice shall be included in all
+ *copies or substantial portions of the Software.
+ *
+ *THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ *SOFTWARE.
+*/
 #include "clcommons/common.h"
 #include "clcommons/image.h"
 
-#ifndef OUTCHANNELS
-#define OUTCHANNELS 3
+#ifndef OUTPUT_CHANNELS
+#define OUTPUT_CHANNELS 3
+#endif
+
+#ifndef ALPHA_VALUE
+#define ALPHA_VALUE UCHAR_MAX
 #endif
 
 #ifndef PIXELT
 #define PIXELT uchar
 #endif
+
 #ifndef RGBPIXELT
-#define RGBPIXELT PASTE(PIXELT, OUTCHANNELS)
+#define RGBPIXELT PASTE(PIXELT, OUTPUT_CHANNELS)
 #endif
 #ifndef LDSPIXELT
 #define LDSPIXELT int
@@ -42,7 +64,7 @@ typedef LDSPIXELT LDSPixelT;// for LDS's, having this large enough to prevent ba
 
 #define pixel_at(type, basename, r, c) image_pixel_at(type, PASTE2(basename, _p), im_rows, im_cols, PASTE2(basename, _pitch), (r), (c))
 #define tex2D_at(type, basename, r, c) image_tex2D(type, PASTE2(basename, _p), im_rows, im_cols, PASTE2(basename, _pitch), (r), (c), ADDRESS_REFLECT_BORDER_EXCLUSIVE)
-#define apron_pixel(_t_r, _t_c) apron[(_t_r)+ half_ksize][(_t_c) + half_ksize]
+#define apron_pixel(_t_r, _t_c) apron[(_t_r)][(_t_c)]
 
 enum pattern_t{
     RGGB = 0,
@@ -53,8 +75,8 @@ enum pattern_t{
 
 //this version takes a tile (z=1) and each tile job does 4 line median sorts
 __kernel __attribute__((reqd_work_group_size(TILE_COLS, TILE_ROWS, 1)))
-void malvar_he_cutler_demosaic(uint im_rows, uint im_cols,
-    __global const uchar *input_image_p /* PixelT */, uint input_image_pitch, __global uchar * output_image_p /*RGBPixelT*/, uint output_image_pitch, int bayer_pattern){
+void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
+    __global const uchar *input_image_p /* PixelT */, const uint input_image_pitch, __global uchar *output_image_p /*RGBPixelT*/, const uint output_image_pitch, const int bayer_pattern){
     const uint tile_col_blocksize = get_local_size(0);
     const uint tile_row_blocksize = get_local_size(1);
     const uint tile_col_block = get_group_id(0) + get_global_offset(0) / tile_col_blocksize;
@@ -86,32 +108,33 @@ void malvar_he_cutler_demosaic(uint im_rows, uint im_cols,
     //const PixelT pixel = apron[a_r][a_c];
 
     //note the following formulas are col, row convention and uses i,j - this is done to preserve readability with the originating paper
-    #define i a_c
-    #define j a_r
-    #define F(i, j) apron_pixel(j, i)
+    const uint i = a_c;
+    const uint j = a_r;
+    #define F(_i, _j) apron_pixel((_j), (_i))
 
+    const int Fij = F(i,j);
     const int G_at_blue_or_red = (4*F(i, j) + 2*(F(i-1,j) + F(i+1,j) + F(i,j-1) + F(i,j+1)) - 1*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))) / 8;
 
     const int R_or_B_at_green_in_red_row = (
-                10*F(i,j)
-               + F(i,j-2) + F(i,j+2)
-               - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i-2,j) + F(i+2,j))
-               + 8*(F(i-1,j) + F(i+1,j))
-               ) / 16;
+      10*F(i,j)
+      + F(i,j-2) + F(i,j+2)
+      - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i-2,j) + F(i+2,j))
+      + 8*(F(i-1,j) + F(i+1,j))
+    ) / 16;
 
     const int R_or_B_at_green_in_blue_row = (
-                 10*F(i,j)
-               + F(i-2,j) + F(i+2,j)
-               - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i,j-2) + F(i,j+2))
-               + 8*(F(i,j-1) + F(i,j+1))
-               ) / 16;
+        10*F(i,j)
+       + F(i-2,j) + F(i+2,j)
+       - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i,j-2) + F(i,j+2))
+       + 8*(F(i,j-1) + F(i,j+1))
+    ) / 16;
 
     const int R_at_B_or_B_at_R = (
-                 12*F(i,j)
-                - 3*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))
-                + 4*(F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1))) / 16;
+         12*F(i,j)
+        - 3*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))
+        + 4*(F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1))
+    ) / 16;
 
-    const int Fij = F(i,j);
     #undef F
     #undef j
     #undef i
@@ -126,8 +149,7 @@ void malvar_he_cutler_demosaic(uint im_rows, uint im_cols,
     #define is_gbrg (bayer_pattern == GBRG)
     #define is_bggr (bayer_pattern == BGGR)
 
-
-    const int red_col = is_rggb | is_bggr;
+    const int red_col = is_grbg | is_bggr;
     const int red_row = is_gbrg | is_bggr;
     const int blue_col = is_rggb | is_gbrg;
     const int blue_row = is_rggb | is_grbg;
@@ -137,26 +159,29 @@ void malvar_he_cutler_demosaic(uint im_rows, uint im_cols,
     const int is_red_pixel = (r_mod_2 == red_row) & (c_mod_2 == red_col);
     const int is_blue_pixel = (r_mod_2 == blue_row) & (c_mod_2 == blue_col);
     const int is_green_pixel = !(is_red_pixel | is_blue_pixel);
+    assert(is_green_pixel + is_blue_pixel + is_red_pixel == 1);
+    assert(in_red_row + in_blue_row == 1);
 
     const uchar R = convert_uchar_sat(
-        is_red_pixel * Fij +
-        R_or_B_at_green_in_red_row * (is_green_pixel & in_red_row) +
-        R_or_B_at_green_in_blue_row * (is_green_pixel & in_blue_row) +
+        Fij * is_red_pixel +
+        R_or_B_at_green_in_red_row * (is_green_pixel * in_red_row) +
+        R_or_B_at_green_in_blue_row * (is_green_pixel * in_blue_row) +
         R_at_B_or_B_at_R * is_blue_pixel
     );
     const uchar B = convert_uchar_sat(
-        is_blue_pixel * Fij +
-        R_or_B_at_green_in_red_row * (is_green_pixel & in_red_row) +
-        R_or_B_at_green_in_blue_row * (is_green_pixel & in_blue_row) +
+        Fij * is_blue_pixel +
+        R_or_B_at_green_in_red_row * (is_green_pixel * in_red_row) +
+        R_or_B_at_green_in_blue_row * (is_green_pixel * in_blue_row) +
         R_at_B_or_B_at_R * is_red_pixel
     );
-    const uchar G = convert_uchar_sat(is_green_pixel * Fij + G_at_blue_or_red * (!is_green_pixel));
+    const uchar G = convert_uchar_sat(Fij * is_green_pixel + G_at_blue_or_red * (!is_green_pixel));
+
 
     if(valid_pixel_task){
-#if OUTCHANNELS == 3
+#if OUTPUT_CHANNELS == 3
         const RGBPixelT output = (RGBPIXELT)(R, G, B);
-#elif OUTCHANNELS == 4
-        const RGBPixelT output = (RGBPixelT)(R, G, B, 0);
+#elif OUTPUT_CHANNELS == 4
+        const RGBPixelT output = (RGBPixelT)(R, G, B, ALPHA_VALUE);
 #else
 #error "Unsupported number of output channels"
 #endif
