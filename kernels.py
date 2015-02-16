@@ -37,7 +37,7 @@ class Demosaic(object):
 
         self.program = None
         self.kernel = None
-        self.TILE_ROWS = 8
+        self.TILE_ROWS = 5
         self.TILE_COLS = 32
 
     def compile(self):
