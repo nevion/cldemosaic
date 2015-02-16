@@ -113,27 +113,38 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     #define F(_i, _j) apron_pixel((_j), (_i))
 
     const int Fij = F(i,j);
-    const int G_at_blue_or_red = (4*F(i, j) + 2*(F(i-1,j) + F(i+1,j) + F(i,j-1) + F(i,j+1)) - 1*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))) / 8;
+    //symmetric 4,2,-1 response
+    const int R1 = (4*F(i, j) + 2*(F(i-1,j) + F(i,j-1) + F(i+1,j) + F(i,j+1)) - F(i-2,j) - F(i+2,j) - F(i,j-2) - F(i,j+2)) / 8;
 
-    const int R_or_B_at_green_in_red_row = (
-      10*F(i,j)
+    //left-right symmetric response - with .5,1,4,5
+    const int R2 = (
+       8*(F(i-1,j) + F(i+1,j))
+      +10*F(i,j)
       + F(i,j-2) + F(i,j+2)
       - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i-2,j) + F(i+2,j))
-      + 8*(F(i-1,j) + F(i+1,j))
     ) / 16;
 
-    const int R_or_B_at_green_in_blue_row = (
-        10*F(i,j)
+    //top-bottom symmetric response - with .5,1,4,5
+    const int R3 = (
+        8*(F(i,j-1) + F(i,j+1))
+       +10*F(i,j)
        + F(i-2,j) + F(i+2,j)
        - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i,j-2) + F(i,j+2))
-       + 8*(F(i,j-1) + F(i,j+1))
     ) / 16;
-
-    const int R_at_B_or_B_at_R = (
+    //symmetric 3/2s response
+    const int R4 = (
          12*F(i,j)
         - 3*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))
         + 4*(F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1))
     ) / 16;
+
+    const int G_at_red_or_blue = R1;
+    const int R_at_G_in_red = R2;
+    const int B_at_G_in_blue = R2;
+    const int R_at_G_in_blue = R3;
+    const int B_at_G_in_red = R3;
+    const int R_at_B = R4;
+    const int B_at_R = R4;
 
     #undef F
     #undef j
@@ -151,8 +162,8 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
 
     const int red_col = is_grbg | is_bggr;
     const int red_row = is_gbrg | is_bggr;
-    const int blue_col = is_rggb | is_gbrg;
-    const int blue_row = is_rggb | is_grbg;
+    const int blue_col = 1 - red_col;
+    const int blue_row = 1 - red_row;
 
     const int in_red_row = r_mod_2 == red_row;
     const int in_blue_row = r_mod_2 == blue_row;
@@ -162,19 +173,30 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     assert(is_green_pixel + is_blue_pixel + is_red_pixel == 1);
     assert(in_red_row + in_blue_row == 1);
 
+    //at R locations: R is original
+    //at B locations it is the 3/2s symmetric response
+    //at G in red rows it is the left-right symmmetric with 4s
+    //at G in blue rows it is the top-bottom symmetric with 4s
     const uchar R = convert_uchar_sat(
         Fij * is_red_pixel +
-        R_or_B_at_green_in_red_row * (is_green_pixel * in_red_row) +
-        R_or_B_at_green_in_blue_row * (is_green_pixel * in_blue_row) +
-        R_at_B_or_B_at_R * is_blue_pixel
+        R_at_B * is_blue_pixel +
+        R_at_G_in_red * (is_green_pixel & in_red_row) +
+        R_at_G_in_blue * (is_green_pixel & in_blue_row)
     );
+    //at B locations: B is original
+    //at R locations it is the 3/2s symmetric response
+    //at G in red rows it is the top-bottom symmmetric with 4s
+    //at G in blue rows it is the left-right symmetric with 4s
     const uchar B = convert_uchar_sat(
         Fij * is_blue_pixel +
-        R_or_B_at_green_in_red_row * (is_green_pixel * in_red_row) +
-        R_or_B_at_green_in_blue_row * (is_green_pixel * in_blue_row) +
-        R_at_B_or_B_at_R * is_red_pixel
+        B_at_R * is_red_pixel +
+        B_at_G_in_red * (is_green_pixel & in_red_row) +
+        B_at_G_in_blue * (is_green_pixel & in_blue_row)
     );
-    const uchar G = convert_uchar_sat(Fij * is_green_pixel + G_at_blue_or_red * (!is_green_pixel));
+    //at G locations: G is original
+    //at R locations: symmetric 4,2,-1
+    //at B locations: symmetric 4,2,-1
+    const uchar G = convert_uchar_sat(Fij * is_green_pixel + G_at_red_or_blue * (!is_green_pixel));
 
 
     if(valid_pixel_task){
