@@ -113,10 +113,10 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     #define F(_i, _j) apron_pixel((_j), (_i))
 
     const int Fij = F(i,j);
-    //symmetric 4,2,-1 response
+    //symmetric 4,2,-1 response - cross
     const int R1 = (4*F(i, j) + 2*(F(i-1,j) + F(i,j-1) + F(i+1,j) + F(i,j+1)) - F(i-2,j) - F(i+2,j) - F(i,j-2) - F(i,j+2)) / 8;
 
-    //left-right symmetric response - with .5,1,4,5
+    //left-right symmetric response - with .5,1,4,5 - theta
     const int R2 = (
        8*(F(i-1,j) + F(i+1,j))
       +10*F(i,j)
@@ -124,14 +124,14 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
       - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i-2,j) + F(i+2,j))
     ) / 16;
 
-    //top-bottom symmetric response - with .5,1,4,5
+    //top-bottom symmetric response - with .5,1,4,5 - phi
     const int R3 = (
         8*(F(i,j-1) + F(i,j+1))
        +10*F(i,j)
        + F(i-2,j) + F(i+2,j)
        - 2*((F(i-1,j-1) + F(i+1,j-1) + F(i-1,j+1) + F(i+1,j+1)) + F(i,j-2) + F(i,j+2))
     ) / 16;
-    //symmetric 3/2s response
+    //symmetric 3/2s response - checker
     const int R4 = (
          12*F(i,j)
         - 3*(F(i-2,j) + F(i+2,j) + F(i,j-2) + F(i,j+2))
