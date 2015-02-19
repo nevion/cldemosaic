@@ -39,14 +39,19 @@
 #define PIXELT uchar
 #endif
 
+#ifndef RGBPIXELBASET
+#define RGBPIXELBASET PIXELT
+#endif
+
 #ifndef RGBPIXELT
-#define RGBPIXELT PASTE(PIXELT, OUTPUT_CHANNELS)
+#define RGBPIXELT PASTE(RGBPIXELBASET, OUTPUT_CHANNELS)
 #endif
 #ifndef LDSPIXELT
 #define LDSPIXELT int
 #endif
 
 typedef PIXELT PixelT;
+typedef RGBPIXELBASET RGBPixelBaseT;
 typedef RGBPIXELT RGBPixelT;
 typedef LDSPIXELT LDSPixelT;// for LDS's, having this large enough to prevent bank conflicts make's a large difference
 #define kernel_size 5
@@ -62,9 +67,11 @@ typedef LDSPIXELT LDSPixelT;// for LDS's, having this large enough to prevent ba
 #define n_apron_fill_tasks (apron_rows * apron_cols)
 #define n_tile_pixels  (tile_rows * tile_cols)
 
-#define pixel_at(type, basename, r, c) image_pixel_at(type, PASTE2(basename, _p), im_rows, im_cols, PASTE2(basename, _pitch), (r), (c))
-#define tex2D_at(type, basename, r, c) image_tex2D(type, PASTE2(basename, _p), im_rows, im_cols, PASTE2(basename, _pitch), (r), (c), ADDRESS_REFLECT_BORDER_EXCLUSIVE)
+#define pixel_at(type, basename, r, c) image_pixel_at(type, PASTE_2(basename, _p), im_rows, im_cols, PASTE_2(basename, _pitch), (r), (c))
+#define tex2D_at(type, basename, r, c) image_tex2D(type, PASTE_2(basename, _p), im_rows, im_cols, PASTE_2(basename, _pitch), (r), (c), ADDRESS_REFLECT_BORDER_EXCLUSIVE)
 #define apron_pixel(_t_r, _t_c) apron[(_t_r)][(_t_c)]
+
+#define output_pixel_cast(x) PASTE3(convert_,RGBPIXELBASET,_sat)((x))
 
 enum pattern_t{
     RGGB = 0,
@@ -177,7 +184,7 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     //at B locations it is the 3/2s symmetric response
     //at G in red rows it is the left-right symmmetric with 4s
     //at G in blue rows it is the top-bottom symmetric with 4s
-    const uchar R = convert_uchar_sat(
+    const RGBPixelBaseT R = output_pixel_cast(
         Fij * is_red_pixel +
         R_at_B * is_blue_pixel +
         R_at_G_in_red * (is_green_pixel & in_red_row) +
@@ -187,7 +194,7 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     //at R locations it is the 3/2s symmetric response
     //at G in red rows it is the top-bottom symmmetric with 4s
     //at G in blue rows it is the left-right symmetric with 4s
-    const uchar B = convert_uchar_sat(
+    const RGBPixelBaseT B = output_pixel_cast(
         Fij * is_blue_pixel +
         B_at_R * is_red_pixel +
         B_at_G_in_red * (is_green_pixel & in_red_row) +
@@ -196,12 +203,12 @@ void malvar_he_cutler_demosaic(const uint im_rows, const uint im_cols,
     //at G locations: G is original
     //at R locations: symmetric 4,2,-1
     //at B locations: symmetric 4,2,-1
-    const uchar G = convert_uchar_sat(Fij * is_green_pixel + G_at_red_or_blue * (!is_green_pixel));
+    const RGBPixelBaseT G = output_pixel_cast(Fij * is_green_pixel + G_at_red_or_blue * (!is_green_pixel));
 
 
     if(valid_pixel_task){
 #if OUTPUT_CHANNELS == 3
-        const RGBPixelT output = (RGBPIXELT)(R, G, B);
+        const RGBPixelT output = (RGBPixelT)(R, G, B);
 #elif OUTPUT_CHANNELS == 4
         const RGBPixelT output = (RGBPixelT)(R, G, B, ALPHA_VALUE);
 #else

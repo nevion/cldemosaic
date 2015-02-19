@@ -30,8 +30,11 @@ class Demosaic(object):
         GBRG = 2
         BGGR = 3
 
-    def __init__(self, img_dtype, output_channels=3, debug=False):
+    def __init__(self, img_dtype, rgb_pixel_base_dtype = None, output_channels=3, debug=False):
         self.img_dtype = img_dtype
+        if rgb_pixel_base_dtype is None:
+            rgb_pixel_base_dtype = img_dtype
+        self.rgb_pixel_base_dtype = rgb_pixel_base_dtype
         self.output_channels = output_channels
         self.debug = debug
 
@@ -42,9 +45,10 @@ class Demosaic(object):
 
     def compile(self):
         PixelT = type_mapper(self.img_dtype)
+        RGBPixelBaseT = type_mapper(self.rgb_pixel_base_dtype)
 
-        KERNEL_FLAGS = '-D PIXELT={PixelT} -D OUTPUT_CHANNELS={output_channels} -D TILE_ROWS={tile_rows} -D TILE_COLS={tile_cols} -D IMAGE_MAD_INDEXING' \
-             .format(PixelT=PixelT, output_channels=self.output_channels, tile_rows=self.TILE_ROWS, tile_cols=self.TILE_COLS)
+        KERNEL_FLAGS = '-D PIXELT={PixelT} -D RGBPIXELBASET={RGBPixelBaseT} -D OUTPUT_CHANNELS={output_channels} -D TILE_ROWS={tile_rows} -D TILE_COLS={tile_cols} -D IMAGE_MAD_INDEXING' \
+             .format(PixelT=PixelT, RGBPixelBaseT=RGBPixelBaseT, output_channels=self.output_channels, tile_rows=self.TILE_ROWS, tile_cols=self.TILE_COLS)
         CL_SOURCE = file(os.path.join(base_path, 'kernels.cl'), 'r').read()
         CL_FLAGS = "-I %s -cl-std=CL1.2 %s" %(common_lib_path, KERNEL_FLAGS)
         CL_FLAGS = cl_opt_decorate(self, CL_FLAGS)
@@ -53,12 +57,15 @@ class Demosaic(object):
 
         self._malvar_he_cutler_demosaic = self.program.malvar_he_cutler_demosaic
 
+    def make_output_buffer(self, queue, image):
+        return clarray.empty(queue, image.shape + (self.output_channels,), dtype = self.img_dtype)
+
     def __call__(self, queue, image, pattern, dst_img = None, wait_for = None):
         tile_dims = self.TILE_COLS, self.TILE_ROWS
         ldims = tile_dims
         rows, cols = int(image.shape[0]), int(image.shape[1])
         if dst_img is None:
-            dst_img = clarray.empty(queue, image.shape + (self.output_channels,), dtype = self.img_dtype)
+            dst_img = self.make_output_buffer(queue, image)
         r_blocks, c_blocks = divUp(rows, tile_dims[1]), divUp(cols, tile_dims[0])
         gdims = (c_blocks * ldims[0], r_blocks * ldims[1])
         event = self._malvar_he_cutler_demosaic(queue,
