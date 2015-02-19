@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
 img = imread(filename)
 if len(img.shape) > 2:
-    img = np.sum(img, axis=2)
+    img = np.sum(img, axis=2, dtype=img.dtype)
 
 demosaic = Demosaic(img.dtype, output_channels = output_channels, debug=debug)
 demosaic.compile()
