@@ -49,10 +49,12 @@ class Demosaic(object):
 
         KERNEL_FLAGS = '-D PIXELT={PixelT} -D RGBPIXELBASET={RGBPixelBaseT} -D OUTPUT_CHANNELS={output_channels} -D TILE_ROWS={tile_rows} -D TILE_COLS={tile_cols} -D IMAGE_MAD_INDEXING' \
              .format(PixelT=PixelT, RGBPixelBaseT=RGBPixelBaseT, output_channels=self.output_channels, tile_rows=self.TILE_ROWS, tile_cols=self.TILE_COLS)
-        CL_SOURCE = file(os.path.join(base_path, 'kernels.cl'), 'r').read()
+        CL_SOURCE = None
+        with open(os.path.join(base_path, 'kernels.cl'), 'r') as f:
+            CL_SOURCE = f.read()
         CL_FLAGS = "-I %s -cl-std=CL1.2 %s" %(common_lib_path, KERNEL_FLAGS)
         CL_FLAGS = cl_opt_decorate(self, CL_FLAGS)
-        print '%r compile flags: %s'%(self.__class__.__name__, CL_FLAGS)
+        print('%r compile flags: %s'%(self.__class__.__name__, CL_FLAGS))
         self.program = cl.Program(ctx, CL_SOURCE).build(options=CL_FLAGS)
 
         self._malvar_he_cutler_demosaic = self.program.malvar_he_cutler_demosaic
