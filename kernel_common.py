@@ -35,6 +35,12 @@ def cl_opt_decorate(kop, CL_FLAGS, max_wg_size_used = None, max_wg_size = None):
         if max_wg_size_used is not None and np.prod(max_wg_size_used, dtype=np.uint32) <= device_wg_size:
             CL_FLAGS2 = CL_FLAGS2 + '-D PROMISE_WG_IS_WAVEFRONT '
         CL_FLAGS = CL_FLAGS2 + CL_FLAGS
+    elif is_nvidia_platform:
+        CL_FLAGS2 = '-D NVIDIA_ARCH -D DEVICE_WAVEFRONT_SIZE={wavefront_size} '.format(wavefront_size=device_wg_size)
+        #if max_wg_size_used is not None and np.prod(max_wg_size_used, dtype=np.uint32) <= device_wg_size:
+        #    CL_FLAGS2 = CL_FLAGS2 + '-D PROMISE_WG_IS_WAVEFRONT '
+        #causes segfault in NvCliCompileBitcode - seems like internal compiler error
+        CL_FLAGS = CL_FLAGS2 + CL_FLAGS
     if max_wg_size is None:
         max_wg_size = default_max_wg_size
     CL_FLAGS = '-D WG_SIZE_MAX=%d '%(max_wg_size,) + CL_FLAGS

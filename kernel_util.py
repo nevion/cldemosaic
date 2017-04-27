@@ -113,7 +113,7 @@ def wavefront_wg_size(device):
     if is_device_amd(device) and device.type == cl.device_type.GPU:
         return device.wavefront_width_amd
     elif is_device_nvidia(device) and device.type == cl.device_type.GPU:
-        return device.wavefront_size_nv
+        return device.warp_size_nv
     else:
         return device.max_work_group_size
 
